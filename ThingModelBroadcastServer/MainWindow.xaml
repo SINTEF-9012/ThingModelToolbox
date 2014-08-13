@@ -1,0 +1,10 @@
+﻿<Window x:Class="ThingModelBroadcastServer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:thingModelBroadcastServer="clr-namespace:ThingModelBroadcastServer"
+        xmlns:oxy="http://oxyplot.codeplex.com"
+        Title="ThingModel Broadcast Server" Height="350" Width="625">
+	<Grid>
+		<oxy:Plot Model="{Binding DataModel}" Background="#1c1c1c" />
+	</Grid>
+</Window>
