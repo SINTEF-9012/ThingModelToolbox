@@ -1,0 +1,21 @@
+{
+  "name": "ThingModelTimeMachine",
+  "version": "0.1.0",
+  "dependencies": {
+    "optimist": "~0.6.0",
+    "sqlite3": "~2.1.19",
+    "express": "~3.4.7",
+    "protobufjs": "~2.0.5",
+    "ws": "~0.4.31",
+    "FileReader": "~0.10.2",
+    "file-api": "~0.9.3",
+    "mime": "~1.2.11",
+    "underscore": "~1.6.0"
+  },
+  "devDependencies": {
+    "expect.js": "~0.2.0"
+  },
+  "scripts": {
+    "start": "tsc Program.ts --module commonjs --target ES5 && node Program.js"
+  }
+}
