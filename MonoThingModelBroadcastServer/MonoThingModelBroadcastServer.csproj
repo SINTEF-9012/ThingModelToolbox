@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">x86</Platform>
+    <ProductVersion>8.0.30703</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{BEBFEC39-E080-46AF-A060-8CDF5D3DB1E8}</ProjectGuid>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>MonoThingModelBroadcastServer</RootNamespace>
+    <AssemblyName>MonoThingModelBroadcastServer</AssemblyName>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
+    <DebugSymbols>True</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>False</Optimize>
+    <OutputPath>bin\Debug</OutputPath>
+    <DefineConstants>DEBUG;</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <PlatformTarget>x86</PlatformTarget>
+    <Externalconsole>True</Externalconsole>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
+    <DebugType>none</DebugType>
+    <Optimize>True</Optimize>
+    <OutputPath>bin\Release</OutputPath>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Externalconsole>True</Externalconsole>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="protobuf-net">
+      <HintPath>..\packages\protobuf-net.2.0.0.668\lib\net40\protobuf-net.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="websocket-sharp">
+      <HintPath>..\packages\WebSocketSharp.1.0.3-rc4\lib\websocket-sharp.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Main.cs" />
+    <Compile Include="AssemblyInfo.cs" />
+    <Compile Include="ThingModel\IWarehouseObserver.cs" />
+    <Compile Include="ThingModel\Location.cs" />
+    <Compile Include="ThingModel\Property.cs" />
+    <Compile Include="ThingModel\PropertyType.cs" />
+    <Compile Include="ThingModel\Thing.cs" />
+    <Compile Include="ThingModel\ThingType.cs" />
+    <Compile Include="ThingModel\Warehouse.cs" />
+    <Compile Include="ThingModel\WarehouseEvents.cs" />
+    <Compile Include="ThingModel\Builders\BuildANewThing.cs" />
+    <Compile Include="ThingModel\Builders\BuildANewThingType.cs" />
+    <Compile Include="ThingModel\Proto\FromProtobuf.cs" />
+    <Compile Include="ThingModel\Proto\Property.cs" />
+    <Compile Include="ThingModel\Proto\PropertyType.cs" />
+    <Compile Include="ThingModel\Proto\ProtoModelObserver.cs" />
+    <Compile Include="ThingModel\Proto\StringDeclaration.cs" />
+    <Compile Include="ThingModel\Proto\Thing.cs" />
+    <Compile Include="ThingModel\Proto\ThingType.cs" />
+    <Compile Include="ThingModel\Proto\ToProtobuf.cs" />
+    <Compile Include="ThingModel\Proto\Transaction.cs" />
+    <Compile Include="ThingModel\WebSockets\Client.cs" />
+    <Compile Include="ThingModel\WebSockets\Server.cs" />
+  </ItemGroup>
+  <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
+  <ItemGroup>
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="ThingModel\" />
+  </ItemGroup>
+</Project>
