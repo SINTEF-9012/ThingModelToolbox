@@ -6,9 +6,13 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Threading;
+using Newtonsoft.Json.Linq;
 using ProtoBuf;
 using ThingModel;
+using ThingModel.Proto;
 using ThingModel.WebSockets;
+using Thing = ThingModel.Thing;
+using ThingType = ThingModel.ThingType;
 using Timer = System.Timers.Timer;
 
 namespace TestMonoSqlite
@@ -25,7 +29,7 @@ namespace TestMonoSqlite
         protected SQLiteCommand DeclarationsCommand;
 
         protected Warehouse Warehouse;
-        protected Client Client;
+        protected Client Client; // TODO
 
         protected IDictionary<string, int> StringDeclarations = new Dictionary<string, int>();
 		
@@ -120,7 +124,7 @@ namespace TestMonoSqlite
 
         public void StartRecording()
         {
-            var timer = new Timer {Interval = 2000, Enabled = true};
+            var timer = new Timer {Interval = Configuration.TimeMachineSaveFrequency, Enabled = true};
             timer.Elapsed += (sender, args) =>
             {
                 lock (_lock)
@@ -146,16 +150,17 @@ namespace TestMonoSqlite
 
                     StringDeclarations[value] = key;
                 }
+                reader.Close();
 
-                Console.WriteLine("Declaration Loaded");
+                Logger.Info(Sqlite.ConnectionString+"|Declaration loaded");
             }
         }
 
         public void Save()
         {
-            Console.WriteLine("Save start");
+            Logger.Debug(Sqlite.ConnectionString+"|Save start");
             // Create a ToProtobuf serializer
-            var toProtobuf = new ThingModel.Proto.ToProtobuf();
+            var toProtobuf = new ToProtobuf();
 
             // Use the shared StringDeclaration dictionnary
             toProtobuf.StringDeclarations = StringDeclarations;
@@ -175,7 +180,7 @@ namespace TestMonoSqlite
             }
             catch (Exception)
             {
-                Console.WriteLine("Conflict on string declarations : try again in 1 second");
+                Logger.Warn(Sqlite.ConnectionString+"|Conflict on string declarations : try again in 1 second");
                 Thread.Sleep(1000);
                 LoadStringDeclarations();
                 Save();
@@ -195,7 +200,7 @@ namespace TestMonoSqlite
             // Compress the binary data
             using (var memoryOutput = new MemoryStream())
             {
-                using (var zlibStream = new GZipStream(memoryOutput, CompressionMode.Compress))
+                using (var zlibStream = new GZipStream(memoryOutput, CompressionLevel.Optimal))
                 {
                        memoryInput.CopyTo(zlibStream);
                 }
@@ -214,7 +219,78 @@ namespace TestMonoSqlite
             InsertTransactionCommand.Parameters["@diff"].Value = diff;
             InsertTransactionCommand.ExecuteNonQuery();
             
-            Console.WriteLine("Save end");
+            Logger.Debug(Sqlite.ConnectionString+"|Save end");
+        }
+
+        public Warehouse RetrieveWarehouse(long parsedTimestamp)
+        {
+            FindCommand.Parameters["@time"].Value = parsedTimestamp;
+            var result = FindCommand.ExecuteReader();
+
+            if (!result.Read())
+            {
+                return null;
+            }
+
+            var scope = result["scope"] as byte[];
+
+            result.Close();
+
+            if (scope == null)
+            {
+                return null;
+            }
+
+            // Decompress the binary data
+            byte[] data;
+            using (var inputStream = new MemoryStream(scope))
+            using (var zlibStream = new GZipStream(inputStream, CompressionMode.Decompress))
+            using (var outputStream = new MemoryStream())
+            {
+                zlibStream.CopyTo(outputStream);
+                data = outputStream.ToArray();
+            }
+
+            var warehouse = new Warehouse();
+            var fromProtobuf = new FromProtobuf(warehouse);
+
+            foreach (var stringDeclaration in StringDeclarations)
+            {
+                fromProtobuf.StringDeclarations[stringDeclaration.Value] = stringDeclaration.Key;
+            }
+            
+            fromProtobuf.Convert(data);
+
+            return warehouse;
+        }
+
+        public JArray History(int parsedPrecision = 1)
+        {
+            var result = new JArray();
+            long oldTime = 0;
+            long currentDiff = 0;
+
+            var reader = HistoryCommand.ExecuteReader();
+            while (reader.Read())
+            {
+                var s = Convert.ToInt64(reader["s"]);
+                var d = Convert.ToInt64(reader["d"]);
+                
+                currentDiff += s;
+
+                if (d - oldTime > parsedPrecision || !reader.HasRows)
+                {
+                    oldTime = d;
+                    var r = new JObject();
+                    r["d"] = d;
+                    r["s"] = currentDiff;
+                    result.Add(r);
+                    currentDiff = 0;
+                }
+            }
+            reader.Close();
+
+            return result;
         }
     }
 }

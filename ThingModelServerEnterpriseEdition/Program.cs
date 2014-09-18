@@ -12,7 +12,7 @@ namespace TestMonoSqlite
 	{
 		public static void Main (string[] args)
 		{
-			Console.WriteLine ("Hello World!");
+		    Logger.Info("Starting up");
 
 		    /*var timeMachine = new TimeMachine("DevelopmentTimeMachine", "wss://master-bridge.eu/thingmodel",
 		        "URI=file:data.db"); */
@@ -21,8 +21,10 @@ namespace TestMonoSqlite
 		    var bazar = new Bazar(server);
 		    var api = new RestAPI(server, bazar);
 
-            bazar.CreateChannel("/");
-            bazar.CreateChannel("/thingmodel");
+            bazar.CreateChannel("/", "Default channel", "");
+            bazar.CreateChannel("/thingmodel", "ThingModel development channel", "With a lot of data");
+
+            bazar.Save();
 
             server.Start();
 

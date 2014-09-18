@@ -9,7 +9,7 @@ namespace TestMonoSqlite
 {
     internal class BroadcastService : WebSocketService
     {
-        public readonly Warehouse Warehouse;
+        public readonly Warehouse LiveWarehouse;
 
         private readonly ToProtobuf _toProtobuf;
         private readonly FromProtobuf _fromProtobuf;
@@ -18,26 +18,38 @@ namespace TestMonoSqlite
 
         private readonly bool _strictServer;
 
+        private readonly Channel _channel;
+
+        protected string LastSenderID = "unknown sender id";
+
+        public bool IsLive; 
+
         public BroadcastService(Channel channel, object uglyLock, bool strictServer)
         {
-            Warehouse = channel.Warehouse;
+            IsLive = true;
+
+            LiveWarehouse = channel.Warehouse;
             _strictServer = strictServer;
+            _channel = channel;
 
             _protoModelObserver = channel.Observer;
 
             _toProtobuf = new ToProtobuf();
-            _fromProtobuf = new FromProtobuf(Warehouse);
+            _fromProtobuf = new FromProtobuf(LiveWarehouse);
             _lock = uglyLock;
+
+            channel.RegisterService(this);
         }
 
         protected override void OnOpen()
         {
-            Transaction transaction;
             lock (_lock)
             {
-                transaction = _toProtobuf.Convert(Warehouse.Things, new Thing[0], Warehouse.ThingTypes, Configuration.BroadcastSenderName);
+                Transaction transaction = _toProtobuf.Convert(LiveWarehouse.Things,
+                    new Thing[0], LiveWarehouse.ThingTypes, Configuration.BroadcastSenderName);
+                Send(transaction);
+                Logger.Info(_channel.Endpoint + " | new connection");
             }
-            Send(transaction);
         }
 
         protected override void OnMessage(MessageEventArgs e)
@@ -55,15 +67,20 @@ namespace TestMonoSqlite
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine(ex.Message);
+                        Logger.Warn(ex.Message);
                         return;
                     }
 
                     if (senderID == "undefined")
                     {
-                        Console.WriteLine("Undefined senderIDs are not allowed");
+                        Logger.Warn(_channel.Endpoint + " | undefined senderID detected. Ignores");
                         return;
                     }
+                       
+                    Logger.Info(_channel.Endpoint + " | " + senderID + " | transaction received | "+e.RawData.Length + " bytes");
+                    Logger.Debug(Convert.ToBase64String(e.RawData));
+
+                    LastSenderID = senderID;
 
                     _toProtobuf.ApplyThingsSuppressions(_protoModelObserver.Deletions);
 
@@ -84,6 +101,21 @@ namespace TestMonoSqlite
                         }
                     }
                 }
+                else if (e.Type == Opcode.TEXT)
+                {
+                    if ("live" == e.Data)
+                    {
+                        IsLive = true;
+                        Send("live");
+                        Logger.Info(_channel.Endpoint + " | " + LastSenderID + " | live");
+                    }
+                    else if ("pause" == e.Data)
+                    {
+                        IsLive = false;
+                        Send("pause");
+                        Logger.Info(_channel.Endpoint + " | " + LastSenderID + " | pause");
+                    }
+                }
             }
         }
 
@@ -94,6 +126,18 @@ namespace TestMonoSqlite
                 var protoData = _toProtobuf.Convert(transaction);
                 Send(protoData);
             }
+        }
+
+        protected override void OnClose(CloseEventArgs e)
+        {
+            _channel.UnregisterService(this);
+            base.OnClose(e);
+        }
+        
+        protected override void OnError(ErrorEventArgs e)
+        {
+            _channel.UnregisterService(this);
+            base.OnError(e);
         }
     }
 }
