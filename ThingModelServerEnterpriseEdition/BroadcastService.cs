@@ -22,12 +22,12 @@ namespace TestMonoSqlite
 
         protected string LastSenderID = "unknown sender id";
 
-        public bool IsLive; 
+        public bool IsLive = true;
+        public bool CanReceive = true;
+        public bool CanSend = true;
 
         public BroadcastService(Channel channel, object uglyLock, bool strictServer)
         {
-            IsLive = true;
-
             LiveWarehouse = channel.Warehouse;
             _strictServer = strictServer;
             _channel = channel;
@@ -43,12 +43,25 @@ namespace TestMonoSqlite
 
         protected override void OnOpen()
         {
+            if (!string.IsNullOrEmpty(Context.QueryString["readonly"]))
+            {
+                CanSend = false;
+                Logger.Info(_channel.Endpoint + " | new readonly connection");
+            } else if (!string.IsNullOrEmpty(Context.QueryString["writeonly"]))
+            {
+                CanReceive = false;
+                Logger.Info(_channel.Endpoint + " | new writeonly connection");
+            }
+            else
+            {
+                Logger.Info(_channel.Endpoint + " | new connection");
+            }
+
             lock (_lock)
             {
-                Transaction transaction = _toProtobuf.Convert(LiveWarehouse.Things,
+                Transaction transaction = _toProtobuf.Convert(CanReceive ? LiveWarehouse.Things: new Thing[0],
                     new Thing[0], LiveWarehouse.ThingTypes, Configuration.BroadcastSenderName);
                 Send(transaction);
-                Logger.Info(_channel.Endpoint + " | new connection");
             }
         }
 
@@ -58,6 +71,13 @@ namespace TestMonoSqlite
             {
                 if (e.Type == Opcode.BINARY)
                 {
+                    if (!CanSend)
+                    {
+                        Send("error: readonly connection");
+                        Logger.Warn(_channel.Endpoint+" | received transaction on readonly connection");
+                        return;
+                    }
+
                     _protoModelObserver.Reset();
 
                     string senderID;
@@ -94,7 +114,7 @@ namespace TestMonoSqlite
                                 var s = session as BroadcastService;
                                 if (s != null)
                                 {
-                                    var transaction = _protoModelObserver.GetTransaction(s._toProtobuf, senderID);
+                                    var transaction = _protoModelObserver.GetTransaction(s._toProtobuf, senderID, false, !s.CanReceive);
                                     s.Send(s._toProtobuf.Convert(transaction));
                                 }
                             }
@@ -121,6 +141,15 @@ namespace TestMonoSqlite
 
         private void Send(Transaction transaction)
         {
+            if (!CanReceive)
+            {
+                if (transaction.things_remove_list.Count > 0 || transaction.things_publish_list.Count > 0)
+                {
+                    transaction.things_remove_list.Clear();
+                    transaction.things_publish_list.Clear();
+                    Logger.Warn(_channel.Endpoint+" | transaction containing publish or remove on a writeonly connection has been cleaned");
+                }
+            }
             lock (_lock)
             {
                 var protoData = _toProtobuf.Convert(transaction);

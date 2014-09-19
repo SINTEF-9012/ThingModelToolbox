@@ -13,11 +13,14 @@ namespace TestMonoSqlite
     {
         protected Bazar Bazar;
 
-        private readonly Regex _createRegex = new Regex(@"^(/?.*)/(create|update)");
-        private readonly Regex _deleteRegex = new Regex(@"^(/?.*)/delete");
-        private readonly Regex _infosRegex = new Regex(@"^(/?.*)/infos");
-        private readonly Regex _historyRegex = new Regex(@"^(/?.*)/history");
-        private readonly Regex _defaultRegex = new Regex(@"/(\?.*?|)$");
+        private readonly Regex _createRegex = new Regex(@"^(/[^?]*|)/(create|update)");
+        private readonly Regex _deleteRegex = new Regex(@"^(/[^?]*|)/delete");
+        private readonly Regex _infosRegex = new Regex(@"^(/[^?]*|)/infos");
+        private readonly Regex _timelineRegex = new Regex(@"^(/[^?]*|)/timeline");
+        private readonly Regex _channelsRegex = new Regex(@"^[^?]*/channels");
+        private readonly Regex _dataRegex = new Regex(@"^(/[^?]*)");
+
+        private readonly Regex _badNamesRegex = new Regex(@"(create|update|delete|infos|timeline|channels)$");
 
         private static readonly TimeSpan DateTimeEpoch = new TimeSpan(
 			new DateTime(1970,1,1,0,0,0, DateTimeKind.Utc).Ticks);
@@ -55,19 +58,24 @@ namespace TestMonoSqlite
                 var name = match.Groups[1].Value;
                 response = Delete(req, res, String.IsNullOrEmpty(name) ? "/" : name);
             }
-            else if ((match = _historyRegex.Match(rawUrl)).Success)
+            else if ((match = _timelineRegex.Match(rawUrl)).Success)
             {
                 var name = match.Groups[1].Value;
-                response = History(req, res, String.IsNullOrEmpty(name) ? "/" : name);
+                response = Timeline(req, res, String.IsNullOrEmpty(name) ? "/" : name);
             }
             else if (rawUrl.EndsWith("/clear"))
             {
                 var name = rawUrl.Substring(0, rawUrl.Length - 6 /*"/clear".Length*/);
                 response = Clear(res, name);
             }
-            else if (_defaultRegex.Match(rawUrl).Success)
+            else if (_channelsRegex.Match(rawUrl).Success)
             {
-                response = Default();
+                response = Channels();
+            }
+            else if ((match = _dataRegex.Match(rawUrl)).Success)
+            {
+                var name = match.Groups[1].Value;
+                response = Data(req, res, String.IsNullOrEmpty(name) ? "/" : name);
             }
             else
             {
@@ -100,7 +108,7 @@ namespace TestMonoSqlite
             return "lol";
         }
 
-        private string Infos(HttpListenerRequest req, HttpListenerResponse res, string endpoint)
+        private string Data(HttpListenerRequest req, HttpListenerResponse res, string endpoint)
         {
             var service = Bazar.Get(endpoint);
 
@@ -133,6 +141,11 @@ namespace TestMonoSqlite
 
         private string Create(HttpListenerRequest req, HttpListenerResponse res, string endpoint)
         {
+            if (_badNamesRegex.Match(endpoint).Success)
+            {
+                return BadRequest(res, "forbidden endpoint endpoint is invalid");
+            }
+
             var name = req.QueryString.Get("name");
             var description = req.QueryString.Get("description");
             var c = Bazar.CreateChannel(endpoint, name, description);
@@ -140,7 +153,7 @@ namespace TestMonoSqlite
             return JsonConvert.SerializeObject(c.JSON(), Formatting.Indented);
         }
         
-        private string History(HttpListenerRequest req, HttpListenerResponse res, string endpoint)
+        private string Timeline(HttpListenerRequest req, HttpListenerResponse res, string endpoint)
         {
             var service = Bazar.Get(endpoint);
 
@@ -163,8 +176,20 @@ namespace TestMonoSqlite
 
             return JsonConvert.SerializeObject(service.TimeMachine.History(), Formatting.None);
         }
+        
+        private string Infos(HttpListenerRequest req, HttpListenerResponse res, string endpoint)
+        {
+            var service = Bazar.Get(endpoint);
 
-        private string Default()
+            if (service == null)
+            {
+                return NotFound(res);
+            }
+
+            return JsonConvert.SerializeObject(service.TimeMachine.Infos(), Formatting.None);
+        }
+
+        private string Channels()
         {
             return JsonConvert.SerializeObject(Bazar.JSON(), Formatting.Indented);
         }

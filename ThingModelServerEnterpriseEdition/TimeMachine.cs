@@ -30,6 +30,7 @@ namespace TestMonoSqlite
 
         protected Warehouse Warehouse;
         protected Client Client; // TODO
+        protected readonly string Name;
 
         protected IDictionary<string, int> StringDeclarations = new Dictionary<string, int>();
 		
@@ -44,6 +45,7 @@ namespace TestMonoSqlite
         {
 
             Warehouse = warehouse;
+            Name = "TimeMachine"+endpoint;
 
             var databasePath = "URI=file:timemachine"+
                 Path.GetInvalidFileNameChars().Aggregate(endpoint, (current, c) => current.Replace(c, '-'))+".db";
@@ -152,13 +154,13 @@ namespace TestMonoSqlite
                 }
                 reader.Close();
 
-                Logger.Info(Sqlite.ConnectionString+"|Declaration loaded");
+                Logger.Info(Name+"|Declaration loaded");
             }
         }
 
         public void Save()
         {
-            Logger.Debug(Sqlite.ConnectionString+"|Save start");
+            Logger.Debug(Name+"|Save start");
             // Create a ToProtobuf serializer
             var toProtobuf = new ToProtobuf();
 
@@ -180,7 +182,7 @@ namespace TestMonoSqlite
             }
             catch (Exception)
             {
-                Logger.Warn(Sqlite.ConnectionString+"|Conflict on string declarations : try again in 1 second");
+                Logger.Warn(Name+"|Conflict on string declarations : try again in 1 second");
                 Thread.Sleep(1000);
                 LoadStringDeclarations();
                 Save();
@@ -219,7 +221,7 @@ namespace TestMonoSqlite
             InsertTransactionCommand.Parameters["@diff"].Value = diff;
             InsertTransactionCommand.ExecuteNonQuery();
             
-            Logger.Debug(Sqlite.ConnectionString+"|Save end");
+            Logger.Debug(Name+"|Save end");
         }
 
         public Warehouse RetrieveWarehouse(long parsedTimestamp)
@@ -288,6 +290,33 @@ namespace TestMonoSqlite
                     currentDiff = 0;
                 }
             }
+            reader.Close();
+
+            return result;
+        }
+
+        public JObject Infos()
+        {
+            var result = new JObject();
+            var reader = InfosCommand.ExecuteReader();
+            if (!reader.Read())
+            {
+                return null;
+            }
+
+            var count = (long) reader["count"];
+
+            if (count > 0)
+            {
+                var oldest = reader["oldest"];
+                var newest = reader["newest"];
+                result["oldest"] = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                    .AddMilliseconds((long)oldest);
+                result["newest"] = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                    .AddMilliseconds((long)newest);
+            }
+            result["count"] = count;
+
             reader.Close();
 
             return result;
