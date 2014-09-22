@@ -115,7 +115,8 @@ namespace TestMonoSqlite
                                 if (s != null)
                                 {
                                     var transaction = _protoModelObserver.GetTransaction(s._toProtobuf, senderID, false, !s.CanReceive);
-                                    s.Send(s._toProtobuf.Convert(transaction));
+                                    //s.Send(s._toProtobuf.Convert(transaction));
+                                    s.Send(transaction);
                                 }
                             }
                         }
@@ -155,6 +156,12 @@ namespace TestMonoSqlite
                 var protoData = _toProtobuf.Convert(transaction);
                 Send(protoData);
             }
+        }
+
+        public void Synchronize(string senderID)
+        {
+            var transaction = _protoModelObserver.GetTransaction(_toProtobuf, senderID, false, !CanReceive);
+            Send(transaction);
         }
 
         protected override void OnClose(CloseEventArgs e)
