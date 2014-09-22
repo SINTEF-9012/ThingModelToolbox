@@ -1,4 +1,5 @@
 using System;
+using System.Text.RegularExpressions;
 using WebSocketSharp;
 using WebSocketSharp.Server;
 using ThingModel;
@@ -12,9 +13,13 @@ namespace TestMonoSqlite
         public readonly Warehouse LiveWarehouse;
         private Warehouse CurrentWarehouse;
 
+        private readonly TimeMachine TimeMachine;
+
         private readonly ToProtobuf _toProtobuf;
         private readonly FromProtobuf _fromProtobuf;
         private readonly ProtoModelObserver _protoModelObserver;
+        private readonly ProtoModelObserver _currentProtoModelObserver;
+
         private readonly object _lock;
 
         private readonly bool _strictServer;
@@ -27,10 +32,14 @@ namespace TestMonoSqlite
         public bool CanReceive = true;
         public bool CanSend = true;
 
+        private static readonly Regex _loadRegex = new Regex(@"load (.+)");
+        private static readonly TimeSpan DateTimeEpoch = new TimeSpan(
+			new DateTime(1970,1,1,0,0,0, DateTimeKind.Utc).Ticks);
+ 
         public BroadcastService(Channel channel, object uglyLock, bool strictServer)
         {
             LiveWarehouse = channel.Warehouse;
-            CurrentWarehouse = null;
+            TimeMachine = channel.TimeMachine;
 
             _strictServer = strictServer;
             _channel = channel;
@@ -40,6 +49,9 @@ namespace TestMonoSqlite
             _toProtobuf = new ToProtobuf();
             _fromProtobuf = new FromProtobuf(LiveWarehouse);
             _lock = uglyLock;
+
+            CurrentWarehouse = null;
+            _currentProtoModelObserver = new ProtoModelObserver();
 
             channel.RegisterService(this);
         }
@@ -140,12 +152,13 @@ namespace TestMonoSqlite
 
                         if (CurrentWarehouse != null && CanReceive)
                         {
-                            var observer = new ProtoModelObserver();
-                            CurrentWarehouse.RegisterObserver(observer);
+                            _currentProtoModelObserver.Reset();
+                            CurrentWarehouse.RegisterObserver(_currentProtoModelObserver);
                             TimeMachine.SynchronizeWarehouse(LiveWarehouse, CurrentWarehouse);
-                            if (observer.SomethingChanged())
+                            if (_currentProtoModelObserver.SomethingChanged())
                             {
-                                var transaction = observer.GetTransaction(_toProtobuf, Configuration.TimeMachineSenderName);
+                                var transaction = _currentProtoModelObserver.GetTransaction(_toProtobuf,
+                                    Configuration.TimeMachineSenderName);
                                 Send(transaction);
                             }
                             CurrentWarehouse = null;
@@ -163,6 +176,59 @@ namespace TestMonoSqlite
                         CurrentWarehouse.RegisterCollection(LiveWarehouse.Things);
 
                         Logger.Info(_channel.Endpoint + " | " + LastSenderID + " | pause");
+                    }
+                    else
+                    {
+                        Match match;
+                        if ((match = _loadRegex.Match(e.Data)).Success)
+                        {
+                            IsLive = false;
+                            Logger.Info(_channel.Endpoint + " | " + LastSenderID + " | load");
+                            var timestamp = match.Groups[1].Value;
+                            long parsedTimestamp;
+                            if (!long.TryParse(timestamp, out parsedTimestamp))
+                            {
+                                DateTime parsedDateTime;
+                                if (!DateTime.TryParse(timestamp, out parsedDateTime))
+                                {
+                                    Logger.Info(_channel.Endpoint + " | " + LastSenderID +
+                                                " | unable to parse the timestamp");
+                                    Send("error: unable to parse the timestamp");
+                                }
+
+                                parsedTimestamp = parsedDateTime.Subtract(DateTimeEpoch).Ticks/10000;
+                            }
+
+                            var oldSituation = TimeMachine.RetrieveWarehouse(parsedTimestamp);
+
+                            if (oldSituation == null)
+                            {
+                                Send("error: no result found");
+                                return;
+                            }
+
+                            if (CurrentWarehouse == null)
+                            {
+                                CurrentWarehouse = new Warehouse();
+                                CurrentWarehouse.RegisterCollection(LiveWarehouse.Things);
+                            }
+
+                            _currentProtoModelObserver.Reset();
+                            CurrentWarehouse.RegisterObserver(_currentProtoModelObserver);
+                            TimeMachine.SynchronizeWarehouse(oldSituation, CurrentWarehouse);
+                            if (_currentProtoModelObserver.SomethingChanged())
+                            {
+                                var transaction = _currentProtoModelObserver.GetTransaction(_toProtobuf, Configuration.TimeMachineSenderName);
+                                var protoData = _toProtobuf.Convert(transaction);
+                                Send(protoData);
+                            }
+
+                        }
+                        else
+                        {
+                            Send("error: instruction unknown");
+                            Logger.Info(_channel.Endpoint + " | " + LastSenderID + " | instruction unknown");
+                        }
                     }
                 }
             }

@@ -13,16 +13,16 @@ namespace TestMonoSqlite
     {
         protected Bazar Bazar;
 
-        private readonly Regex _createRegex = new Regex(@"^(/[^?]*|)/(create|update)");
-        private readonly Regex _deleteRegex = new Regex(@"^(/[^?]*|)/delete");
-        private readonly Regex _infosRegex = new Regex(@"^(/[^?]*|)/infos");
-        private readonly Regex _clearRegex = new Regex(@"^(/[^?]*|)/clear");
-        private readonly Regex _loadRegex = new Regex(@"^(/[^?]*|)/load/([^?]+)");
-        private readonly Regex _timelineRegex = new Regex(@"^(/[^?]*|)/timeline");
-        private readonly Regex _channelsRegex = new Regex(@"^[^?]*/channels");
-        private readonly Regex _dataRegex = new Regex(@"^(/[^?]*)");
+        private static readonly Regex _createRegex = new Regex(@"^(/[^?]*|)/(create|update)");
+        private static readonly Regex _deleteRegex = new Regex(@"^(/[^?]*|)/delete");
+        private static readonly Regex _infosRegex = new Regex(@"^(/[^?]*|)/infos");
+        private static readonly Regex _clearRegex = new Regex(@"^(/[^?]*|)/clear");
+        private static readonly Regex _loadRegex = new Regex(@"^(/[^?]*|)/load/([^?]+)");
+        private static readonly Regex _timelineRegex = new Regex(@"^(/[^?]*|)/timeline");
+        private static readonly Regex _channelsRegex = new Regex(@"^[^?]*/channels");
+        private static readonly Regex _dataRegex = new Regex(@"^(/[^?]*)");
 
-        private readonly Regex _badNamesRegex = new Regex(@"(create|update|delete|infos|timeline|channels|clear|load)$");
+        private static readonly Regex _badNamesRegex = new Regex(@"(create|update|delete|infos|timeline|channels|clear|load)$");
 
         private static readonly TimeSpan DateTimeEpoch = new TimeSpan(
 			new DateTime(1970,1,1,0,0,0, DateTimeKind.Utc).Ticks);

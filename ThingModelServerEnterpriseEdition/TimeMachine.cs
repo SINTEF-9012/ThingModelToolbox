@@ -255,9 +255,9 @@ namespace TestMonoSqlite
             Logger.Debug(Name+"|Save end");
         }
 
-        public Warehouse RetrieveWarehouse(long parsedTimestamp)
+        public Warehouse RetrieveWarehouse(long timestamp)
         {
-            FindCommand.Parameters["@time"].Value = parsedTimestamp;
+            FindCommand.Parameters["@time"].Value = timestamp;
             var result = FindCommand.ExecuteReader();
 
             if (!result.Read())

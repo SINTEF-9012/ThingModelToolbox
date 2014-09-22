@@ -31,9 +31,9 @@ namespace TestMonoSqlite
 
             Warehouse = new Warehouse();
 
-            Services = new HashSet<BroadcastService>();
-
             TimeMachine = new TimeMachine(Warehouse, endpoint);
+
+            Services = new HashSet<BroadcastService>();
 
             Observer = new ProtoModelObserver();
             Warehouse.RegisterObserver(Observer);
