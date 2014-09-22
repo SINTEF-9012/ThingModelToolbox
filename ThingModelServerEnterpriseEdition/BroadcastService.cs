@@ -10,6 +10,7 @@ namespace TestMonoSqlite
     internal class BroadcastService : WebSocketService
     {
         public readonly Warehouse LiveWarehouse;
+        private Warehouse CurrentWarehouse;
 
         private readonly ToProtobuf _toProtobuf;
         private readonly FromProtobuf _fromProtobuf;
@@ -29,6 +30,8 @@ namespace TestMonoSqlite
         public BroadcastService(Channel channel, object uglyLock, bool strictServer)
         {
             LiveWarehouse = channel.Warehouse;
+            CurrentWarehouse = null;
+
             _strictServer = strictServer;
             _channel = channel;
 
@@ -74,7 +77,14 @@ namespace TestMonoSqlite
                     if (!CanSend)
                     {
                         Send("error: readonly connection");
-                        Logger.Warn(_channel.Endpoint+" | received transaction on readonly connection");
+                        Logger.Warn(_channel.Endpoint+" | received transaction on a readonly connection");
+                        return;
+                    }
+
+                    if (!IsLive)
+                    {
+                        Send("error: past situation cannot be edited");
+                        Logger.Warn(_channel.Endpoint+" | received transaction on a past situation connection");
                         return;
                     }
 
@@ -114,7 +124,7 @@ namespace TestMonoSqlite
                                 var s = session as BroadcastService;
                                 if (s != null)
                                 {
-                                    var transaction = _protoModelObserver.GetTransaction(s._toProtobuf, senderID, false, !s.CanReceive);
+                                    var transaction = _protoModelObserver.GetTransaction(s._toProtobuf, senderID, false, !s.CanReceive || !s.IsLive);
                                     //s.Send(s._toProtobuf.Convert(transaction));
                                     s.Send(transaction);
                                 }
@@ -127,6 +137,20 @@ namespace TestMonoSqlite
                     if ("live" == e.Data)
                     {
                         IsLive = true;
+
+                        if (CurrentWarehouse != null && CanReceive)
+                        {
+                            var observer = new ProtoModelObserver();
+                            CurrentWarehouse.RegisterObserver(observer);
+                            TimeMachine.SynchronizeWarehouse(LiveWarehouse, CurrentWarehouse);
+                            if (observer.SomethingChanged())
+                            {
+                                var transaction = observer.GetTransaction(_toProtobuf, Configuration.TimeMachineSenderName);
+                                Send(transaction);
+                            }
+                            CurrentWarehouse = null;
+                        }
+
                         Send("live");
                         Logger.Info(_channel.Endpoint + " | " + LastSenderID + " | live");
                     }
@@ -134,6 +158,10 @@ namespace TestMonoSqlite
                     {
                         IsLive = false;
                         Send("pause");
+
+                        CurrentWarehouse = new Warehouse();
+                        CurrentWarehouse.RegisterCollection(LiveWarehouse.Things);
+
                         Logger.Info(_channel.Endpoint + " | " + LastSenderID + " | pause");
                     }
                 }
@@ -142,7 +170,7 @@ namespace TestMonoSqlite
 
         private void Send(Transaction transaction)
         {
-            if (!CanReceive)
+            if (!CanReceive || !IsLive)
             {
                 if (transaction.things_remove_list.Count > 0 || transaction.things_publish_list.Count > 0)
                 {
@@ -160,7 +188,7 @@ namespace TestMonoSqlite
 
         public void Synchronize(string senderID)
         {
-            var transaction = _protoModelObserver.GetTransaction(_toProtobuf, senderID, false, !CanReceive);
+            var transaction = _protoModelObserver.GetTransaction(_toProtobuf, senderID, false, !CanReceive||!IsLive);
             Send(transaction);
         }
 

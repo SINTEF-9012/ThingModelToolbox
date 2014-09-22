@@ -298,7 +298,7 @@ namespace TestMonoSqlite
             return warehouse;
         }
 
-        public void SynchronizeWarehouse(Warehouse input, Warehouse output)
+        public static void SynchronizeWarehouse(Warehouse input, Warehouse output)
         {
             if (input == null || output == null)
             {
