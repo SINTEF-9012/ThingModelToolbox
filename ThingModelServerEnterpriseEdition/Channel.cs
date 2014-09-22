@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 using ThingModel;
 using ThingModel.Proto;
+using Thing = ThingModel.Thing;
 
 namespace TestMonoSqlite
 {
@@ -48,6 +49,27 @@ namespace TestMonoSqlite
         public void UnregisterService(BroadcastService service)
         {
             Services.Remove(service);
+        }
+
+        public void Clear()
+        {
+            Warehouse.RemoveCollection(new HashSet<Thing>(Warehouse.Things));
+            SynchronizeServices(Configuration.ClearServiceSenderName);
+        }
+
+        public void Load(long timestamp)
+        {
+            var oldSituation = TimeMachine.RetrieveWarehouse(timestamp);
+            TimeMachine.SynchronizeWarehouse(oldSituation, Warehouse);
+            SynchronizeServices(Configuration.TimeMachineSenderName);
+        }
+
+        protected void SynchronizeServices(string senderID)
+        {
+            foreach (var broadcastService in Services)
+            {
+                broadcastService.Synchronize(senderID);
+            }
         }
 
         public JObject JSON()

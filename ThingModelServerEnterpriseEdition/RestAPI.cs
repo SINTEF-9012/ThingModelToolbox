@@ -16,11 +16,13 @@ namespace TestMonoSqlite
         private readonly Regex _createRegex = new Regex(@"^(/[^?]*|)/(create|update)");
         private readonly Regex _deleteRegex = new Regex(@"^(/[^?]*|)/delete");
         private readonly Regex _infosRegex = new Regex(@"^(/[^?]*|)/infos");
+        private readonly Regex _clearRegex = new Regex(@"^(/[^?]*|)/clear");
+        private readonly Regex _loadRegex = new Regex(@"^(/[^?]*|)/load/([^?]+)");
         private readonly Regex _timelineRegex = new Regex(@"^(/[^?]*|)/timeline");
         private readonly Regex _channelsRegex = new Regex(@"^[^?]*/channels");
         private readonly Regex _dataRegex = new Regex(@"^(/[^?]*)");
 
-        private readonly Regex _badNamesRegex = new Regex(@"(create|update|delete|infos|timeline|channels)$");
+        private readonly Regex _badNamesRegex = new Regex(@"(create|update|delete|infos|timeline|channels|clear|load)$");
 
         private static readonly TimeSpan DateTimeEpoch = new TimeSpan(
 			new DateTime(1970,1,1,0,0,0, DateTimeKind.Utc).Ticks);
@@ -41,51 +43,67 @@ namespace TestMonoSqlite
             Logger.Info("REST|"+req.UserHostAddress+"|"+req.RawUrl);
             string response;
 
-            Match match; 
+            try
+            {
+                Match match; 
 
-            if ((match = _createRegex.Match(rawUrl)).Success)
-            {
-                var name = match.Groups[1].Value;
-                response = Create(req, res, String.IsNullOrEmpty(name) ? "/" : name);
+                if ((match = _createRegex.Match(rawUrl)).Success)
+                {
+                    var name = match.Groups[1].Value;
+                    response = Create(req, res, String.IsNullOrEmpty(name) ? "/" : name);
+                }
+                else if ((match = _infosRegex.Match(rawUrl)).Success)
+                {
+                    var name = match.Groups[1].Value;
+                    response = Infos(res, String.IsNullOrEmpty(name) ? "/" : name);
+                }
+                else if ((match = _deleteRegex.Match(rawUrl)).Success)
+                {
+                    var name = match.Groups[1].Value;
+                    response = Delete(res, String.IsNullOrEmpty(name) ? "/" : name);
+                }
+                else if ((match = _timelineRegex.Match(rawUrl)).Success)
+                {
+                    var name = match.Groups[1].Value;
+                    response = Timeline(req, res, String.IsNullOrEmpty(name) ? "/" : name);
+                }
+                else if ((match = _clearRegex.Match(rawUrl)).Success)
+                {
+                    var name = match.Groups[1].Value;
+                    response = Clear(res, name);
+                }
+                else if ((match = _loadRegex.Match(rawUrl)).Success)
+                {
+                    var name = match.Groups[1].Value;
+                    var timestamp = match.Groups[2].Value;
+                    response = Load(res, name, timestamp);
+                }
+                else if (_channelsRegex.Match(rawUrl).Success)
+                {
+                    response = Channels();
+                }
+                else if ((match = _dataRegex.Match(rawUrl)).Success)
+                {
+                    var name = match.Groups[1].Value;
+                    response = Data(req, res, String.IsNullOrEmpty(name) ? "/" : name);
+                }
+                else
+                {
+                    response = NotFound(res, "404 not found");
+                }
             }
-            else if ((match = _infosRegex.Match(rawUrl)).Success)
+            catch (Exception e)
             {
-                var name = match.Groups[1].Value;
-                response = Infos(req, res, String.IsNullOrEmpty(name) ? "/" : name);
-            }
-            else if ((match = _deleteRegex.Match(rawUrl)).Success)
-            {
-                var name = match.Groups[1].Value;
-                response = Delete(req, res, String.IsNullOrEmpty(name) ? "/" : name);
-            }
-            else if ((match = _timelineRegex.Match(rawUrl)).Success)
-            {
-                var name = match.Groups[1].Value;
-                response = Timeline(req, res, String.IsNullOrEmpty(name) ? "/" : name);
-            }
-            else if (rawUrl.EndsWith("/clear"))
-            {
-                var name = rawUrl.Substring(0, rawUrl.Length - 6 /*"/clear".Length*/);
-                response = Clear(res, name);
-            }
-            else if (_channelsRegex.Match(rawUrl).Success)
-            {
-                response = Channels();
-            }
-            else if ((match = _dataRegex.Match(rawUrl)).Success)
-            {
-                var name = match.Groups[1].Value;
-                response = Data(req, res, String.IsNullOrEmpty(name) ? "/" : name);
-            }
-            else
-            {
-                response = NotFound(res, "404 not found");
+                Logger.Error("REST|"+e.Message);
+                res.StatusCode = (int)HttpStatusCode.InternalServerError;
+                res.ContentType = "text/plain";
+                response = "internal server error";
             }
 
             res.WriteContent(System.Text.Encoding.UTF8.GetBytes(response));
         }
 
-        private string Delete(HttpListenerRequest req, HttpListenerResponse res, string name)
+        private string Delete(HttpListenerResponse res, string name)
         {
             if (name == "/")
             {
@@ -98,21 +116,23 @@ namespace TestMonoSqlite
 
         private string Clear(HttpListenerResponse res, string name)
         {
-            var service = Bazar.Get(name);
+            var channel = Bazar.Get(name);
 
-            if (service == null)
+            if (channel == null)
             {
                 return NotFound(res);
             }
 
-            return "lol";
+            channel.Clear();
+
+            return "true";
         }
 
         private string Data(HttpListenerRequest req, HttpListenerResponse res, string endpoint)
         {
-            var service = Bazar.Get(endpoint);
+            var channel = Bazar.Get(endpoint);
 
-            if (service == null)
+            if (channel == null)
             {
                 return NotFound(res);
             }
@@ -132,11 +152,11 @@ namespace TestMonoSqlite
                     parsedTimestamp = parsedDateTime.Subtract(DateTimeEpoch).Ticks/10000;
                 }
 
-                var warehouse = service.TimeMachine.RetrieveWarehouse(parsedTimestamp);
+                var warehouse = channel.TimeMachine.RetrieveWarehouse(parsedTimestamp);
                 return JsonConvert.SerializeObject(WarehouseToJSON(warehouse), Formatting.Indented);
             }
 
-            return JsonConvert.SerializeObject(WarehouseToJSON(service.Warehouse), Formatting.Indented);
+            return JsonConvert.SerializeObject(WarehouseToJSON(channel.Warehouse), Formatting.Indented);
         }
 
         private string Create(HttpListenerRequest req, HttpListenerResponse res, string endpoint)
@@ -155,9 +175,9 @@ namespace TestMonoSqlite
         
         private string Timeline(HttpListenerRequest req, HttpListenerResponse res, string endpoint)
         {
-            var service = Bazar.Get(endpoint);
+            var channel = Bazar.Get(endpoint);
 
-            if (service == null)
+            if (channel == null)
             {
                 return NotFound(res);
             }
@@ -171,22 +191,48 @@ namespace TestMonoSqlite
                     return BadRequest(res, "unable to parse the precision");
                 }
 
-                return JsonConvert.SerializeObject(service.TimeMachine.History(parsedPrecision), Formatting.None);
+                return JsonConvert.SerializeObject(channel.TimeMachine.History(parsedPrecision), Formatting.None);
             }
 
-            return JsonConvert.SerializeObject(service.TimeMachine.History(), Formatting.None);
+            return JsonConvert.SerializeObject(channel.TimeMachine.History(), Formatting.None);
         }
         
-        private string Infos(HttpListenerRequest req, HttpListenerResponse res, string endpoint)
+        private string Load(HttpListenerResponse res, string endpoint, string timestamp)
         {
-            var service = Bazar.Get(endpoint);
+            var channel = Bazar.Get(endpoint);
 
-            if (service == null)
+            if (channel == null)
             {
                 return NotFound(res);
             }
 
-            return JsonConvert.SerializeObject(service.TimeMachine.Infos(), Formatting.None);
+            long parsedTimestamp;
+            if (!long.TryParse(timestamp, out parsedTimestamp))
+            {
+                DateTime parsedDateTime;
+                if (!DateTime.TryParse(timestamp, out parsedDateTime))
+                {
+                    return BadRequest(res, "unable to parse the timestamp");
+                }
+
+                parsedTimestamp = parsedDateTime.Subtract(DateTimeEpoch).Ticks/10000;
+            }
+
+            channel.Load(parsedTimestamp);
+
+            return "true";
+        }
+
+        private string Infos(HttpListenerResponse res, string endpoint)
+        {
+            var channel = Bazar.Get(endpoint);
+
+            if (channel == null)
+            {
+                return NotFound(res);
+            }
+
+            return JsonConvert.SerializeObject(channel.TimeMachine.Infos(), Formatting.None);
         }
 
         private string Channels()
@@ -214,7 +260,7 @@ namespace TestMonoSqlite
         {
             var things = new JObject();
 
-            foreach (var thing in warehouse.Things)
+            if (warehouse != null) foreach (var thing in warehouse.Things)
             {
                 var t = new JObject();
 
@@ -304,7 +350,7 @@ namespace TestMonoSqlite
 
             var types = new JObject();
 
-            foreach (var thingType in warehouse.ThingTypes)
+            if (warehouse != null) foreach (var thingType in warehouse.ThingTypes)
             {
                 var t = new JObject();
 

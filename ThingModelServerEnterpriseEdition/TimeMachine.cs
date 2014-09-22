@@ -62,37 +62,50 @@ namespace TestMonoSqlite
         {
             public double DifferencesCounter;
 
+            public ISet<string> SenderIDs = new HashSet<string>(); 
+
             public void New(Thing thing, string sender)
             {
                 DifferencesCounter += 40;
+                SenderIDs.Add(sender);
             }
 
             public void Deleted(Thing thing, string sender)
             {
                 DifferencesCounter += 40;
+                SenderIDs.Add(sender);
             }
 
             public void Updated(Thing thing, string sender)
             {
                 DifferencesCounter += 1;
+                SenderIDs.Add(sender);
             }
 
             public void Define(ThingType thingType, string sender)
             {
                 DifferencesCounter += 60;
+                SenderIDs.Add(sender);
+            }
+
+            public void Reset()
+            {
+                SenderIDs.Clear();
+                DifferencesCounter = 0;
             }
         }
 
         protected void SetUp()
         {
-			new SQLiteCommand("CREATE TABLE IF NOT EXISTS recorder (datetime INTEGER, scope BLOB, diff INTEGER)", Sqlite).ExecuteNonQuery ();
+			new SQLiteCommand("CREATE TABLE IF NOT EXISTS recorder (datetime INTEGER, scope BLOB, diff INTEGER, senderID INTEGER)", Sqlite).ExecuteNonQuery ();
 			new SQLiteCommand("CREATE TABLE IF NOT EXISTS declarations (key INTEGER PRIMARY KEY, value TEXT)", Sqlite).ExecuteNonQuery ();
 			new SQLiteCommand("CREATE UNIQUE INDEX IF NOT EXISTS recorderindex ON recorder(datetime)", Sqlite).ExecuteNonQuery ();
 
-			InsertTransactionCommand = new SQLiteCommand ("INSERT INTO recorder VALUES (@datetime, @scope, @diff)", Sqlite);
+			InsertTransactionCommand = new SQLiteCommand ("INSERT INTO recorder VALUES (@datetime, @scope, @diff, @senderID)", Sqlite);
 			InsertTransactionCommand.Parameters.Add (new SQLiteParameter ("@datetime", DbType.Int64));
 			InsertTransactionCommand.Parameters.Add (new SQLiteParameter ("@scope", DbType.Binary));
 			InsertTransactionCommand.Parameters.Add (new SQLiteParameter ("@diff", DbType.Int64));
+			InsertTransactionCommand.Parameters.Add (new SQLiteParameter ("@senderID", DbType.Int64));
 			InsertTransactionCommand.Prepare ();
 
 			InsertDeclarationCommand = new SQLiteCommand ("INSERT INTO declarations VALUES (@key, @value)", Sqlite);
@@ -112,8 +125,8 @@ namespace TestMonoSqlite
 		                                    + " WHERE datetime = (SELECT MAX(datetime) FROM recorder)) AS newest", Sqlite);
             InfosCommand.Prepare();
 
-		    HistoryCommand = new SQLiteCommand("SELECT datetime AS d, diff AS s" +
-		                                      " FROM recorder ORDER BY datetime ASC", Sqlite);
+		    HistoryCommand = new SQLiteCommand("SELECT datetime AS d, diff AS s, value AS id" +
+		                                      " FROM recorder, declarations WHERE senderID == key ORDER BY datetime ASC", Sqlite);
             HistoryCommand.Prepare();
 
 		    DeclarationsCommand = new SQLiteCommand("SELECT key, value FROM declarations", Sqlite);
@@ -167,8 +180,24 @@ namespace TestMonoSqlite
             // Use the shared StringDeclaration dictionnary
             toProtobuf.StringDeclarations = StringDeclarations;
 
+            string id = null;
+
+            foreach (var senderID in Observer.SenderIDs)
+            {
+                var s = senderID ?? Configuration.TimeMachineSenderName;
+
+                if (id == null)
+                {
+                    id = "" + s;
+                }
+                else
+                {
+                    id = "|" + s;
+                }
+            }
+
             // Serialize
-            var transaction = toProtobuf.Convert(Warehouse.Things, new Thing[0], Warehouse.ThingTypes, Configuration.TimeMachineSenderName);
+            var transaction = toProtobuf.Convert(Warehouse.Things, new Thing[0], Warehouse.ThingTypes, id);
 
             // Save the new string declarations in the shared dictionnary
             try
@@ -213,12 +242,14 @@ namespace TestMonoSqlite
 
             var date = DateTime.UtcNow.Subtract(DateTimeEpoch).Ticks/10000;
             var diff = Math.Round(Observer.DifferencesCounter);
-            Observer.DifferencesCounter = 0.0;
+
+            Observer.Reset();
 
             // Store the transaction in the database
             InsertTransactionCommand.Parameters["@datetime"].Value = date;
             InsertTransactionCommand.Parameters["@scope"].Value = compressedData;
             InsertTransactionCommand.Parameters["@diff"].Value = diff;
+            InsertTransactionCommand.Parameters["@senderID"].Value = StringDeclarations[id];
             InsertTransactionCommand.ExecuteNonQuery();
             
             Logger.Debug(Name+"|Save end");
@@ -231,6 +262,7 @@ namespace TestMonoSqlite
 
             if (!result.Read())
             {
+                result.Close();
                 return null;
             }
 
@@ -266,6 +298,29 @@ namespace TestMonoSqlite
             return warehouse;
         }
 
+        public void SynchronizeWarehouse(Warehouse input, Warehouse output)
+        {
+            if (input == null || output == null)
+            {
+                return;
+            }
+
+            // Remove the things
+            foreach (var thing in output.Things)
+            {
+                if (input.GetThing(thing.ID) == null)
+                {
+                    output.RemoveThing(thing);
+                }
+            }
+
+            // Register the things
+            foreach (var thing in input.Things)
+            {
+                output.RegisterThing(thing, false);
+            }
+        }
+
         public JArray History(int parsedPrecision = 1)
         {
             var result = new JArray();
@@ -286,6 +341,7 @@ namespace TestMonoSqlite
                     var r = new JObject();
                     r["d"] = d;
                     r["s"] = currentDiff;
+                    r["id"] = reader["id"].ToString();
                     result.Add(r);
                     currentDiff = 0;
                 }
@@ -301,6 +357,7 @@ namespace TestMonoSqlite
             var reader = InfosCommand.ExecuteReader();
             if (!reader.Read())
             {
+                reader.Close();
                 return null;
             }
 
