@@ -3,19 +3,39 @@ removeAllWeapons player;
 
 hint("Arma2Net.Unmanaged" callExtension "Reload");
 
-// INIT:endpoint|lat|lng
-"Arma2Net.Unmanaged" callExtension "Arma2ThingModel INIT|Arma|ws://localhost:8082|39.905572|25.221947|14258|15819|0.75";
+sleep 2;
+
+// INIT:hostname:port:lat:lng
+"Arma2Net.Unmanaged" callExtension "Arma2ThingModel INIT|Arma|wss://master-bridge.eu/thingmodel";
+
+thingmodelPingCpt=0;
 
 while {(true)} do
 {
-	data = [];
+	_a = "nop";
+	if (thingmodelPingCpt == 0) then {
+		units_data = [];
+		{ units_data = units_data + [[_x]+getPos(_x)+[getDir(_x),getDammage(_x),getFatigue(_x),(fuel vehicle _x),(speed _x),(typeOf vehicle _x),(isPlayer _x),(side _x),(vehicle _x), (_x getVariable "detectedBy")]] } forEach allUnits;
+
+		markers_data = [];
+		{ markers_data = markers_data + [[_x]+markerPos(_x)+[markerType(_x),markerText(_x)]] } forEach allMapMarkers;
+		
+		_a = "Arma2Net.Unmanaged" callExtension format ["Arma2ThingModel %1|%2", units_data, markers_data];
+
+		thingmodelPingCpt = 9;
+	} else {
+		thingmodelPingCpt = thingmodelPingCpt-1;
+		_a = "Arma2Net.Unmanaged" callExtension "Arma2ThingModel PING";
+	};
 	
-	{ data = data + [[_x]+getPos(_x)+(velocity _x)+[getDir(_x),getDammage(_x),getFatigue(_x),(fuel _x)]] } forEach allUnits;
-	
-	_a = "Arma2Net.Unmanaged" callExtension format ["Arma2ThingModel %1", data];
 	
 	switch(_a) do
 	{
+		case "pong":
+		{
+			// do nothing
+		};
+
 		case "nop":
 		{
 			// do nothing
@@ -23,7 +43,12 @@ while {(true)} do
 
 		case "connected":
 		{
-			hintSilent "Connected"
+			hint "Connected"
+		};
+
+		case "notconnected":
+		{
+			hint "Not connected"
 		};
 
 		default
@@ -33,6 +58,6 @@ while {(true)} do
 		};
 	};
 	
-	sleep 0.5;
+	sleep 0.05;
 	
 };
