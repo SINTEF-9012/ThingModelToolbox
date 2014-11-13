@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Data.SQLite;
+using Mono.Data.Sqlite;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -19,17 +19,17 @@ namespace ThingModelServerEnterpriseEdition
 {
     class TimeMachine
     {
-        protected readonly SQLiteConnection Sqlite;
+		protected readonly SqliteConnection Sqlite;
 
-        protected SQLiteCommand InsertTransactionCommand;
-        protected SQLiteCommand InsertDeclarationCommand;
-        protected SQLiteCommand FindCommand;
-        protected SQLiteCommand InfosCommand;
-        protected SQLiteCommand HistoryCommand;
-        protected SQLiteCommand DeclarationsCommand;
+		protected SqliteCommand InsertTransactionCommand;
+        protected SqliteCommand InsertDeclarationCommand;
+        protected SqliteCommand FindCommand;
+        protected SqliteCommand InfosCommand;
+        protected SqliteCommand HistoryCommand;
+        protected SqliteCommand DeclarationsCommand;
 
         protected Warehouse Warehouse;
-        protected Client Client; // TODO
+        //protected Client Client; // TODO
         protected readonly string Name;
 
         protected IDictionary<string, int> StringDeclarations = new Dictionary<string, int>();
@@ -50,7 +50,7 @@ namespace ThingModelServerEnterpriseEdition
             var databasePath = "URI=file:timemachine"+
                 Path.GetInvalidFileNameChars().Aggregate(endpoint, (current, c) => current.Replace(c, '-'))+".db";
 
-            Sqlite = new SQLiteConnection(databasePath);
+            Sqlite = new SqliteConnection(databasePath);
 			Sqlite.Open();
 
             SetUp();
@@ -97,39 +97,39 @@ namespace ThingModelServerEnterpriseEdition
 
         protected void SetUp()
         {
-			new SQLiteCommand("CREATE TABLE IF NOT EXISTS recorder (datetime INTEGER, scope BLOB, diff INTEGER, senderID INTEGER)", Sqlite).ExecuteNonQuery ();
-			new SQLiteCommand("CREATE TABLE IF NOT EXISTS declarations (key INTEGER PRIMARY KEY, value TEXT)", Sqlite).ExecuteNonQuery ();
-			new SQLiteCommand("CREATE UNIQUE INDEX IF NOT EXISTS recorderindex ON recorder(datetime)", Sqlite).ExecuteNonQuery ();
+			new SqliteCommand("CREATE TABLE IF NOT EXISTS recorder (datetime INTEGER, scope BLOB, diff INTEGER, senderID INTEGER)", Sqlite).ExecuteNonQuery ();
+			new SqliteCommand("CREATE TABLE IF NOT EXISTS declarations (key INTEGER PRIMARY KEY, value TEXT)", Sqlite).ExecuteNonQuery ();
+			new SqliteCommand("CREATE UNIQUE INDEX IF NOT EXISTS recorderindex ON recorder(datetime)", Sqlite).ExecuteNonQuery ();
 
-			InsertTransactionCommand = new SQLiteCommand ("INSERT INTO recorder VALUES (@datetime, @scope, @diff, @senderID)", Sqlite);
-			InsertTransactionCommand.Parameters.Add (new SQLiteParameter ("@datetime", DbType.Int64));
-			InsertTransactionCommand.Parameters.Add (new SQLiteParameter ("@scope", DbType.Binary));
-			InsertTransactionCommand.Parameters.Add (new SQLiteParameter ("@diff", DbType.Int64));
-			InsertTransactionCommand.Parameters.Add (new SQLiteParameter ("@senderID", DbType.Int64));
+			InsertTransactionCommand = new SqliteCommand ("INSERT INTO recorder VALUES (@datetime, @scope, @diff, @senderID)", Sqlite);
+			InsertTransactionCommand.Parameters.Add (new SqliteParameter ("@datetime", DbType.Int64));
+			InsertTransactionCommand.Parameters.Add (new SqliteParameter ("@scope", DbType.Binary));
+			InsertTransactionCommand.Parameters.Add (new SqliteParameter ("@diff", DbType.Int64));
+			InsertTransactionCommand.Parameters.Add (new SqliteParameter ("@senderID", DbType.Int64));
 			InsertTransactionCommand.Prepare ();
 
-			InsertDeclarationCommand = new SQLiteCommand ("INSERT INTO declarations VALUES (@key, @value)", Sqlite);
-			InsertDeclarationCommand.Parameters.Add (new SQLiteParameter ("@key", DbType.Int64));
-			InsertDeclarationCommand.Parameters.Add (new SQLiteParameter ("@value", DbType.Object));
+			InsertDeclarationCommand = new SqliteCommand ("INSERT INTO declarations VALUES (@key, @value)", Sqlite);
+			InsertDeclarationCommand.Parameters.Add (new SqliteParameter ("@key", DbType.Int64));
+			InsertDeclarationCommand.Parameters.Add (new SqliteParameter ("@value", DbType.Object));
 			InsertDeclarationCommand.Prepare ();
 
-		    FindCommand = new SQLiteCommand("SELECT datetime, scope, diff FROM recorder" +
+		    FindCommand = new SqliteCommand("SELECT datetime, scope, diff FROM recorder" +
 		            " WHERE ABS(@time-datetime) = (SELECT MIN(ABS(@time - datetime)) FROM recorder)", Sqlite);
-            FindCommand.Parameters.Add(new SQLiteParameter("@time", DbType.Int64));
+            FindCommand.Parameters.Add(new SqliteParameter("@time", DbType.Int64));
             FindCommand.Prepare();
 
-		    InfosCommand = new SQLiteCommand("SELECT (SELECT COUNT(*) FROM recorder) AS count"
+		    InfosCommand = new SqliteCommand("SELECT (SELECT COUNT(*) FROM recorder) AS count"
 		                                    + ", (SELECT datetime FROM recorder"
 		                                    + " WHERE datetime = (SELECT MIN(datetime) FROM recorder)) AS oldest"
 		                                    + ", (SELECT datetime FROM recorder"
 		                                    + " WHERE datetime = (SELECT MAX(datetime) FROM recorder)) AS newest", Sqlite);
             InfosCommand.Prepare();
 
-		    HistoryCommand = new SQLiteCommand("SELECT datetime AS d, diff AS s, value AS id" +
+		    HistoryCommand = new SqliteCommand("SELECT datetime AS d, diff AS s, value AS id" +
 		                                      " FROM recorder, declarations WHERE senderID == key ORDER BY datetime ASC", Sqlite);
             HistoryCommand.Prepare();
 
-		    DeclarationsCommand = new SQLiteCommand("SELECT key, value FROM declarations", Sqlite);
+		    DeclarationsCommand = new SqliteCommand("SELECT key, value FROM declarations", Sqlite);
             DeclarationsCommand.Prepare();
 
             Observer = new TimeMachineWarehouseObserver();
