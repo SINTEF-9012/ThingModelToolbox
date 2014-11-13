@@ -1,4 +1,4 @@
-namespace TestMonoSqlite
+namespace ThingModelServerEnterpriseEdition
 {
     class Configuration
     {

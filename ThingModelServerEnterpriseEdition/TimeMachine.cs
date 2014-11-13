@@ -15,7 +15,7 @@ using Thing = ThingModel.Thing;
 using ThingType = ThingModel.ThingType;
 using Timer = System.Timers.Timer;
 
-namespace TestMonoSqlite
+namespace ThingModelServerEnterpriseEdition
 {
     class TimeMachine
     {

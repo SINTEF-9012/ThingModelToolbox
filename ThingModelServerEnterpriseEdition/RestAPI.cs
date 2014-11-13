@@ -7,7 +7,7 @@ using WebSocketSharp;
 using WebSocketSharp.Net;
 using WebSocketSharp.Server;
 
-namespace TestMonoSqlite
+namespace ThingModelServerEnterpriseEdition
 {
     class RestAPI
     {

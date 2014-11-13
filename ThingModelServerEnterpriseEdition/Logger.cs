@@ -1,7 +1,7 @@
 using System;
 using System.Globalization;
 
-namespace TestMonoSqlite
+namespace ThingModelServerEnterpriseEdition
 {
     class Logger
     {

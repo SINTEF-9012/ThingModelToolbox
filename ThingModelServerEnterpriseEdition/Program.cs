@@ -1,7 +1,7 @@
 using System.Threading;
 using WebSocketSharp.Server;
 
-namespace TestMonoSqlite
+namespace ThingModelServerEnterpriseEdition
 {
 	class MainClass
 	{

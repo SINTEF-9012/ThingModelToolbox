@@ -6,7 +6,7 @@ using ThingModel;
 using ThingModel.Proto;
 using Thing = ThingModel.Thing;
 
-namespace TestMonoSqlite
+namespace ThingModelServerEnterpriseEdition
 {
     internal class BroadcastService : WebSocketService
     {

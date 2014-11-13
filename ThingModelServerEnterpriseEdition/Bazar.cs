@@ -5,7 +5,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using WebSocketSharp.Server;
 
-namespace TestMonoSqlite
+namespace ThingModelServerEnterpriseEdition
 {
     class Bazar
     {
