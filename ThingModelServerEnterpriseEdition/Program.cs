@@ -19,8 +19,7 @@ namespace ThingModelServerEnterpriseEdition
 
             server.Start();
 
-            Thread.Sleep(Timeout.Infinite);
-
+		    (new ManualResetEvent(false)).WaitOne();
 		}
 
 	}
