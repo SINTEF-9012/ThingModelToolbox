@@ -14,8 +14,8 @@ var db = new sqlite3.Database(config.database);
 db.serialize(function() {
 	db.run('CREATE TABLE IF NOT EXISTS declarations (key INTEGER PRIMARY KEY, value STRING)');
 	db.run('CREATE UNIQUE INDEX IF NOT EXISTS declarationsindex ON declarations(value)');
-	db.run('CREATE INDEX IF NOT EXISTS datetimeindex ON recorder(datetime ASC)');
 	db.run('CREATE TABLE IF NOT EXISTS recorder (datetime INTEGER, thingid INTEGER, propertykey INTEGER, value INTEGER)');
+	db.run('CREATE INDEX IF NOT EXISTS datetimeindex ON recorder(datetime ASC)');
 });
 
 var insertTransactionDb = db.prepare('INSERT INTO recorder VALUES (?, ?, ?, ?)'),
