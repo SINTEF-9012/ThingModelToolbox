@@ -22,11 +22,16 @@ var insertTransactionDb = db.prepare('INSERT INTO recorder VALUES (?, ?, ?, ?)')
 	insertDeclarationDb = db.prepare('INSERT INTO declarations VALUES (?, ?)'),
 	findDb = db.prepare('SELECT datetime, value FROM recorder'+
 		' WHERE thingid = ? AND propertykey = ? AND datetime >= ? AND datetime <= ?'+
-		' ORDER by datetime ASC'),
-	dashboardDb = db.prepare('SELECT d1.value AS thingid, d2.value AS propertykey, recorder.datetime, recorder.value' +
+		' ORDER BY datetime ASC'),
+	dashboardDb = db.prepare('SELECT d1.value AS thingid, COUNT(*) AS recordscount' +
+		' FROM recorder, declarations AS d1' +
+		' WHERE d1.key = recorder.thingid' +
+		' GROUP BY recorder.thingid' +
+		' ORDER BY thingid ASC'),
+	thingDb = db.prepare('SELECT d1.value AS thingid, d2.value AS propertykey, recorder.datetime, recorder.value' +
 		' FROM recorder, declarations AS d1, declarations AS d2'+
-		' WHERE d1.key = recorder.thingid AND d2.key = recorder.propertykey AND datetime >= ?'+
-		' ORDER by d1.key, d2.key, datetime ASC'),
+		' WHERE d1.key = recorder.thingid AND d2.key = recorder.propertykey AND datetime >= ? AND d1.value = ?'+
+		' ORDER BY d2.value ASC, datetime ASC'),
 	declarationsDb = db.prepare('SELECT key, value FROM declarations');
 
 var stringDeclarationsCpt = 1;
@@ -95,13 +100,127 @@ var parseDate = function(input) {
 var app = express();
 app.use(morgan('combined'));
 
+app.use(function(req, res, next) {
+	res.header("Access-Control-Allow-Origin", "*");
+	res.header("Access-Control-Allow-Headers", "X-Requested-With");
+	next();
+});
+
 app.set('port', (process.env.PORT || config.port));
+
+app.get('/', function(req, res) {
+	dashboardDb.all(function(error, rows){
+		dashboardDb.reset();
+		jsdom.env({
+			features: { QuerySelector : true },
+			html: '<html><head></head><body></body></html>',
+			done: function(errors, window) { 
+				var doc = window.document;
+				var list = doc.createElement("ul");
+				for (var row in rows) {
+					var r = rows[row];
+					var a = doc.createElement("a");
+					a.setAttribute("href", "/"+window.encodeURIComponent(r.thingid));
+					var count = doc.createElement("em");
+					count.appendChild(doc.createTextNode("("+r.recordscount+")"));
+					a.appendChild(doc.createTextNode(r.thingid + " "));
+					a.appendChild(count);
+					var li = doc.createElement("li");
+					li.appendChild(a);
+					list.appendChild(li);
+				}
+				doc.body.appendChild(list);
+				res.type('html');
+				res.send('<!DOCTYPE html>\n<html>'+window.document.body.parentNode.innerHTML+'</html>');
+			}
+		});
+	});
+});
+
+app.get('/:thingId', function(req, res) {
+	var data = {}, lastTitle = null, lastDataList = null;
+	thingDb.each(0, req.params.thingId, function(error, row){
+		var title = row.propertykey;
+		if (lastTitle !== title) {
+			lastTitle = title;
+			data[title] = lastDataList = [];
+		}
+		lastDataList.push({x:row.datetime, y:row.value});
+	}, function(error) {
+		thingDb.reset();
+		jsdom.env({
+			features: { QuerySelector : true },
+			html: '<html><head></head><body></div></body></html>',
+			done: function(errors, window) { 
+
+				for (var key in data) {
+					var div = window.document.createElement("div");
+					div.className = "dashboard-result";
+					var title =  window.document.createElement("h3");
+					title.appendChild(window.document.createTextNode(key));
+					div.appendChild(title);
+
+					try {
+						var sLine = simplify(data[key]);
+
+						var width = 800,
+							height = 220,
+							margin = 40;
+
+						var roger = d3.select(div).append('svg:svg')
+							.attr('width', width+'px')
+							.attr('height', height+'px');
+
+						var xRange = d3.scale.linear().range([margin, width-margin]).domain([
+							d3.min(sLine, function(d){ return d.x}),
+							d3.max(sLine, function(d){ return d.x})]);
+						var yRange = d3.scale.linear().range([height-margin, margin]).domain([
+							d3.min(sLine, function(d){ return d.y}),
+							d3.max(sLine, function(d){ return d.y})]);
+
+						var xAxis = d3.svg.axis().scale(xRange);
+						var yAxis = d3.svg.axis().scale(yRange).tickSize(5).orient('left');
+
+						roger.append('svg:g')
+							.attr('class', 'x axis')
+							.attr('stroke-width', 1)
+							.attr('transform', 'translate(0,'+(height-margin)+')')
+							.call(xAxis).selectAll("text").remove();
+
+						roger.append('svg:g')
+							.attr('class', 'y axis')
+							.attr('stroke-width', 1)
+							.attr('transform', 'translate('+margin+',0)')
+							.call(yAxis);
+
+						//console.log(key,data[key].length);
+
+						var sLineFunction = d3.svg.line()
+							.x(function(d) { return xRange(d ? d.x : 0); })
+							.y(function(d) { return yRange(d ? d.y : 0); }).interpolate('basis');
+
+						roger.append('path')
+							.attr('d', sLineFunction(sLine))
+							.attr('stroke', 'orange')
+							.attr('stroke-width', 2)
+							.attr('fill', 'none');
+
+					} catch(e){}
+					window.document.body.appendChild(div);
+				}
+
+				res.type('html');
+				res.send('<!DOCTYPE html>\n<html>'+window.document.body.parentNode.innerHTML+'</html>');
+			}
+		});
+	});
+});
 
 app.get('/:thingId/:propertyKey', function(req, res) {
 	var result = [];
 	if (!stringDeclarations.hasOwnProperty(req.params.thingId) ||
 		!stringDeclarations.hasOwnProperty(req.params.propertyKey)) {
-		res.send("lol");
+		res.status(404).send("Thing not found");
 		return;
 	}
 
@@ -120,128 +239,6 @@ app.get('/:thingId/:propertyKey', function(req, res) {
 			result[i] = {date:result[i].x, value:result[i].y};
 		}
 		res.json(result);
-	});
-});
-
-app.get('/', function(req, res) {
-	var data = {}, lastTitle = null, lastDataList = null;
-	dashboardDb.each(0, function(error, row){
-		var title = row.thingid + " - " + row.propertykey;
-		if (lastTitle !== title) {
-			lastTitle = title;
-			data[title] = lastDataList = [];
-		}
-		lastDataList.push({x:row.datetime, y:row.value});
-	}, function(error) {
-		dashboardDb.reset();
-		jsdom.env({
-			features: { QuerySelector : true },
-			html: '<html><head></head><body></div></body></html>',
-			done: function(errors, window) { 
-
-				for (var key in data) {
-					var div = window.document.createElement("div");
-					div.className = "dashboard-result";
-					var title =  window.document.createElement("h3");
-					title.appendChild(window.document.createTextNode(key));
-					div.appendChild(title);
-
-					var sLine = simplify(data[key]);
-
-					var width = 800,
-						height = 220,
-						margin = 40;
-
-					var roger = d3.select(div).append('svg:svg')
-						.attr('width', width+'px')
-						.attr('height', height+'px');
-
-					var xRange = d3.scale.linear().range([margin, width-margin]).domain([
-						d3.min(sLine, function(d){ return d.x}),
-						d3.max(sLine, function(d){ return d.x})]);
-					var yRange = d3.scale.linear().range([height-margin, margin]).domain([
-						d3.min(sLine, function(d){ return d.y}),
-						d3.max(sLine, function(d){ return d.y})]);
-
-					var xAxis = d3.svg.axis().scale(xRange);
-					var yAxis = d3.svg.axis().scale(yRange).tickSize(5).orient('left');
-
-					roger.append('svg:g')
-						.attr('class', 'x axis')
-						.attr('stroke-width', 1)
-						.attr('transform', 'translate(0,'+(height-margin)+')')
-						.call(xAxis).selectAll("text").remove();
-
-					roger.append('svg:g')
-						.attr('class', 'y axis')
-						.attr('stroke-width', 1)
-						.attr('transform', 'translate('+margin+',0)')
-						.call(yAxis);
-
-					//console.log(key,data[key].length);
-
-					var sLineFunction = d3.svg.line()
-						.x(function(d) { return xRange(d ? d.x : 0); })
-						.y(function(d) { return yRange(d ? d.y : 0); }).interpolate('basis');
-
-					roger.append('path')
-						.attr('d', sLineFunction(sLine))
-						.attr('stroke', 'orange')
-						.attr('stroke-width', 2)
-						.attr('fill', 'none');
-
-					window.document.body.appendChild(div);
-				}
-				/*var view = window.document.getElementById("svg-view");
-
-				/*var line = [
-					{x: 1, y: 20},
-					{x: 2, y: 22},
-					{x: 3, y: 24},
-					{x: 4, y: 18},
-					{x: 5, y: 25},
-					{x: 6, y: 24},
-					{x: 7, y: 40},
-					{x: 8, y: 25},
-					{x: 9, y: 10}
-				];
-
-				for (var i = 0; i < 10000;++i) {
-					var y = line.length ? Math.round((Math.random()-0.5)*2+line[line.length-1].y) : -40;
-					if (y > 20 || y < -20) y = Math.round((Math.random()-0.5)*30);
-					line.push({
-						x: i/10,
-						y: y
-					});
-				}
-
-				var sLine = simplify(line, 4, true);
-
-				console.log(sLine.length)
-
-				var lineFunction = d3.svg.line()
-					.x(function(d) { return d.x; })
-					.y(function(d) { return (d.y+20)*10; });
-				var sLineFunction = d3.svg.line()
-					.x(function(d) { return d.x; })
-					.y(function(d) { return (d.y+20)*10; }).interpolate('basis');
-
-				roger.append('path')
-					.attr('d', lineFunction(line))
-					.attr('stroke', 'blue')
-					.attr('stroke-width', 2)
-					.attr('fill', 'none');
-
-				roger.append('path')
-					.attr('d', sLineFunction(sLine))
-					.attr('stroke', 'orange')
-					.attr('stroke-width', 2)
-					.attr('fill', 'none');*/
-
-				res.type('html');
-				res.send(window.document.body.innerHTML);
-			}
-		});
 	});
 });
 
