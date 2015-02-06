@@ -1,3 +1,4 @@
+using System.IO;
 using System.Threading;
 using WebSocketSharp.Server;
 
@@ -13,7 +14,10 @@ namespace ThingModelServerEnterpriseEdition
 		    var bazar = new Bazar(server);
 		    var api = new RestAPI(server, bazar);
 
-		    bazar.CreateChannel("/", Configuration.DefaultChannelName, Configuration.DefaultChannelDescription);
+		    if (!File.Exists(Configuration.BazarPersistentFile))
+		    {
+		        bazar.CreateChannel("/", Configuration.DefaultChannelName, Configuration.DefaultChannelDescription);
+		    };
 
             bazar.Save();
 
