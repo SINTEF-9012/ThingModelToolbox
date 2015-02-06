@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Data;
 using Mono.Data.Sqlite;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Threading;
 using Newtonsoft.Json.Linq;
@@ -14,6 +13,7 @@ using ThingModel.WebSockets;
 using Thing = ThingModel.Thing;
 using ThingType = ThingModel.ThingType;
 using Timer = System.Timers.Timer;
+using ICSharpCode.SharpZipLib.GZip;
 
 namespace ThingModelServerEnterpriseEdition
 {
@@ -146,7 +146,11 @@ namespace ThingModelServerEnterpriseEdition
                 {
                     if (Observer.DifferencesCounter > 0.0)
                     {
-                        Save();
+						try {
+							Save();
+						} catch (Exception ex) {
+							Logger.Error("TimeMachine|"+ex.GetType() + "|" + ex.Message);
+						}
                     }
                 }
             };
@@ -223,28 +227,26 @@ namespace ThingModelServerEnterpriseEdition
 
             // Convert the transaction to binary
             var memoryInput = new MemoryStream();
-            Serializer.Serialize(memoryInput, transaction);
+			ProtoBuf.Serializer.Serialize(memoryInput, transaction);
             memoryInput.Position = 0;
 
             byte[] compressedData;
 
             // Compress the binary data
             using (var memoryOutput = new MemoryStream())
-            {
-                using (var zlibStream = new GZipStream(memoryOutput, CompressionLevel.Optimal))
-                {
+			{
+				using (var zlibStream = new GZipOutputStream(memoryOutput))
+				{
                        memoryInput.CopyTo(zlibStream);
                 }
 
                 compressedData = memoryOutput.ToArray();
             }
 
-
             var date = DateTime.UtcNow.Subtract(DateTimeEpoch).Ticks/10000;
             var diff = Math.Round(Observer.DifferencesCounter);
 
             Observer.Reset();
-
             // Store the transaction in the database
             InsertTransactionCommand.Parameters["@datetime"].Value = date;
             InsertTransactionCommand.Parameters["@scope"].Value = compressedData;
@@ -278,7 +280,7 @@ namespace ThingModelServerEnterpriseEdition
             // Decompress the binary data
             byte[] data;
             using (var inputStream = new MemoryStream(scope))
-            using (var zlibStream = new GZipStream(inputStream, CompressionMode.Decompress))
+            using (var zlibStream = new GZipInputStream(inputStream))
             using (var outputStream = new MemoryStream())
             {
                 zlibStream.CopyTo(outputStream);
