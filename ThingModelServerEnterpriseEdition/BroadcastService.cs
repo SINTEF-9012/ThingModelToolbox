@@ -217,6 +217,7 @@ namespace ThingModelServerEnterpriseEdition
                                 parsedTimestamp = parsedDateTime.Subtract(DateTimeEpoch).Ticks/10000;
                             }
 
+                            var oldSituation = TimeMachine.RetrieveWarehouse(parsedTimestamp);
 
                             if (oldSituation == null)
                             {
