@@ -8,7 +8,7 @@ using Thing = ThingModel.Thing;
 
 namespace ThingModelServerEnterpriseEdition
 {
-    internal class BroadcastService : WebSocketService
+	internal class BroadcastService : WebSocketBehavior
     {
         public readonly Warehouse LiveWarehouse;
         private Warehouse CurrentWarehouse;
@@ -60,15 +60,33 @@ namespace ThingModelServerEnterpriseEdition
         {
             if (!string.IsNullOrEmpty(Context.QueryString["readonly"]))
             {
+				if (!Security.Instance.CanRead (_channel, Context.QueryString ["key"])) {
+					Send ("authentication error: readonly access refused");
+					Logger.Warn (_channel.Endpoint + " | new readonly connection refused");
+					Sessions.CloseSession (ID);
+					return;
+				}
                 CanSend = false;
                 Logger.Info(_channel.Endpoint + " | new readonly connection");
             } else if (!string.IsNullOrEmpty(Context.QueryString["writeonly"]))
             {
+				if (!Security.Instance.CanWrite (_channel, Context.QueryString ["key"])) {
+					Send ("authentication error: writeonly access refused");
+					Logger.Warn (_channel.Endpoint + " | new writeonly connection refused");
+					Sessions.CloseSession (ID);
+					return;
+				}
                 CanReceive = false;
                 Logger.Info(_channel.Endpoint + " | new writeonly connection");
             }
             else
             {
+				if (!Security.Instance.CanReadWrite (_channel, Context.QueryString ["key"])) {
+					Send ("authentication error: access refused");
+					Logger.Warn (_channel.Endpoint + " | new connection refused");
+					Sessions.CloseSession (ID);
+					return;
+				}
                 Logger.Info(_channel.Endpoint + " | new connection");
             }
 
@@ -84,7 +102,7 @@ namespace ThingModelServerEnterpriseEdition
         {
             lock (_lock)
             {
-                if (e.Type == Opcode.BINARY)
+                if (e.Type == Opcode.Binary)
                 {
                     if (!CanSend)
                     {
@@ -144,7 +162,7 @@ namespace ThingModelServerEnterpriseEdition
                         }
                     }
                 }
-                else if (e.Type == Opcode.TEXT)
+				else if (e.Type == Opcode.Text)
                 {
                     if ("live" == e.Data)
                     {
@@ -199,7 +217,6 @@ namespace ThingModelServerEnterpriseEdition
                                 parsedTimestamp = parsedDateTime.Subtract(DateTimeEpoch).Ticks/10000;
                             }
 
-                            var oldSituation = TimeMachine.RetrieveWarehouse(parsedTimestamp);
 
                             if (oldSituation == null)
                             {
