@@ -21,8 +21,9 @@ namespace ThingModelServerEnterpriseEdition
         private static readonly Regex _timelineRegex = new Regex(@"^(/[^?]*|)/timeline");
         private static readonly Regex _channelsRegex = new Regex(@"^[^?]*/channels");
         private static readonly Regex _dataRegex = new Regex(@"^(/[^?]*)");
+		private static readonly Regex _reloadRegex = new Regex(@"^(/[^?]*|)/securityreload");
 
-        private static readonly Regex _badNamesRegex = new Regex(@"(create|update|delete|infos|timeline|channels|clear|load)$");
+        private static readonly Regex _badNamesRegex = new Regex(@"(create|update|delete|infos|timeline|channels|clear|load|securityreload)$");
 
         private static readonly TimeSpan DateTimeEpoch = new TimeSpan(
 			new DateTime(1970,1,1,0,0,0, DateTimeKind.Utc).Ticks);
@@ -55,12 +56,12 @@ namespace ThingModelServerEnterpriseEdition
                 else if ((match = _infosRegex.Match(rawUrl)).Success)
                 {
                     var name = match.Groups[1].Value;
-                    response = Infos(res, String.IsNullOrEmpty(name) ? "/" : name);
+                    response = Infos(req, res, String.IsNullOrEmpty(name) ? "/" : name);
                 }
                 else if ((match = _deleteRegex.Match(rawUrl)).Success)
                 {
                     var name = match.Groups[1].Value;
-                    response = Delete(res, String.IsNullOrEmpty(name) ? "/" : name);
+                    response = Delete(req, res, String.IsNullOrEmpty(name) ? "/" : name);
                 }
                 else if ((match = _timelineRegex.Match(rawUrl)).Success)
                 {
@@ -70,18 +71,22 @@ namespace ThingModelServerEnterpriseEdition
                 else if ((match = _clearRegex.Match(rawUrl)).Success)
                 {
                     var name = match.Groups[1].Value;
-                    response = Clear(res, name);
+                    response = Clear(req, res, name);
                 }
                 else if ((match = _loadRegex.Match(rawUrl)).Success)
                 {
                     var name = match.Groups[1].Value;
                     var timestamp = match.Groups[2].Value;
-                    response = Load(res, name, timestamp);
+                    response = Load(req, res, name, timestamp);
                 }
                 else if (_channelsRegex.Match(rawUrl).Success)
                 {
                     response = Channels();
                 }
+				else if (_reloadRegex.Match(rawUrl).Success)
+				{
+					response = SecurityReload();
+				}
                 else if ((match = _dataRegex.Match(rawUrl)).Success)
                 {
                     var name = match.Groups[1].Value;
@@ -103,24 +108,42 @@ namespace ThingModelServerEnterpriseEdition
             res.WriteContent(System.Text.Encoding.UTF8.GetBytes(response));
         }
 
-        private string Delete(HttpListenerResponse res, string name)
+        private string Delete(HttpListenerRequest req, HttpListenerResponse res, string name)
         {
             if (name == "/")
             {
                 return BadRequest(res, "you cannot delete this channel");
             }
+
+            var channel = Bazar.Get(name);
+
+            if (channel == null)
+            {
+                return NotFound(res);
+            }
+
+            if (!Security.Instance.CanWrite(channel, req.QueryString.Get("key")))
+            {
+                return Unauthorized(res);
+            }
+
             var r = Bazar.DeleteChannel(name);
             Bazar.Save();
             return JsonConvert.SerializeObject(r);
         }
 
-        private string Clear(HttpListenerResponse res, string name)
+        private string Clear(HttpListenerRequest req, HttpListenerResponse res, string name)
         {
             var channel = Bazar.Get(name);
 
             if (channel == null)
             {
                 return NotFound(res);
+            }
+
+            if (!Security.Instance.CanWrite(channel, req.QueryString.Get("key")))
+            {
+                return Unauthorized(res);
             }
 
             channel.Clear();
@@ -135,6 +158,11 @@ namespace ThingModelServerEnterpriseEdition
             if (channel == null)
             {
                 return NotFound(res);
+            }
+            
+            if (!Security.Instance.CanRead(channel, req.QueryString.Get("key")))
+            {
+                return Unauthorized(res);
             }
 
             string timestamp;
@@ -166,6 +194,13 @@ namespace ThingModelServerEnterpriseEdition
                 return BadRequest(res, "forbidden endpoint endpoint is invalid");
             }
 
+			var channel = Bazar.Get(endpoint);
+
+			if (channel != null && !Security.Instance.CanWrite(channel, req.QueryString.Get("key")))
+			{
+				return Unauthorized(res);
+			}
+
             var name = req.QueryString.Get("name");
             var description = req.QueryString.Get("description");
             var c = Bazar.CreateChannel(endpoint, name, description);
@@ -180,6 +215,11 @@ namespace ThingModelServerEnterpriseEdition
             if (channel == null)
             {
                 return NotFound(res);
+            }
+
+            if (!Security.Instance.CanRead(channel, req.QueryString.Get("key")))
+            {
+                return Unauthorized(res);
             }
 
             string precision;
@@ -197,13 +237,18 @@ namespace ThingModelServerEnterpriseEdition
             return JsonConvert.SerializeObject(channel.TimeMachine.History(), Formatting.None);
         }
         
-        private string Load(HttpListenerResponse res, string endpoint, string timestamp)
+        private string Load(HttpListenerRequest req, HttpListenerResponse res, string endpoint, string timestamp)
         {
             var channel = Bazar.Get(endpoint);
 
             if (channel == null)
             {
                 return NotFound(res);
+            }
+
+            if (!Security.Instance.CanWrite(channel, req.QueryString.Get("key")))
+            {
+                return Unauthorized(res);
             }
 
             long parsedTimestamp;
@@ -223,13 +268,18 @@ namespace ThingModelServerEnterpriseEdition
             return "true";
         }
 
-        private string Infos(HttpListenerResponse res, string endpoint)
+        private string Infos(HttpListenerRequest req, HttpListenerResponse res, string endpoint)
         {
             var channel = Bazar.Get(endpoint);
 
             if (channel == null)
             {
                 return NotFound(res);
+            }
+            
+            if (!Security.Instance.CanRead(channel, req.QueryString.Get("key")))
+            {
+                return Unauthorized(res);
             }
 
             return JsonConvert.SerializeObject(channel.TimeMachine.Infos(), Formatting.None);
@@ -239,6 +289,12 @@ namespace ThingModelServerEnterpriseEdition
         {
             return JsonConvert.SerializeObject(Bazar.JSON(), Formatting.Indented);
         }
+
+		private string SecurityReload()
+		{
+			Security.Instance.Reload ();
+			return "true";
+		}
 
         private string NotFound(HttpListenerResponse res, string message = "channel not found")
         {
@@ -252,6 +308,14 @@ namespace ThingModelServerEnterpriseEdition
         {
             Logger.Warn("REST|BadRequest|"+message);
             res.StatusCode = (int)HttpStatusCode.BadRequest;
+            res.ContentType = "text/plain";
+            return message;
+        }
+
+        private string Unauthorized(HttpListenerResponse res, string message = "get out of my lawn")
+        {
+            Logger.Warn("REST|Aunauthorized|"+message);
+            res.StatusCode = (int) HttpStatusCode.Unauthorized;
             res.ContentType = "text/plain";
             return message;
         }

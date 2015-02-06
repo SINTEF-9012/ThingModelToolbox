@@ -17,5 +17,7 @@ namespace ThingModelServerEnterpriseEdition
         public static readonly string DefaultChannelName = "Default channel";
 
         public static readonly string DefaultChannelDescription = "";
+
+		public static readonly string SecurityFile = "security.json";
     }
 }

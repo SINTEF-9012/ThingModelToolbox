@@ -78,6 +78,7 @@ namespace ThingModelServerEnterpriseEdition
             c["name"] = Name;
             c["description"] = Description;
             c["creationDate"] = CreationDate;
+            c["secure"] = Security.Instance.IsSecure(this);
             return c;
         }
     }
