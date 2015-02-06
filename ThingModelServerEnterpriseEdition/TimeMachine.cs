@@ -288,11 +288,12 @@ namespace ThingModelServerEnterpriseEdition
             var warehouse = new Warehouse();
             var fromProtobuf = new FromProtobuf(warehouse);
 
-            foreach (var stringDeclaration in StringDeclarations)
-            {
-                fromProtobuf.StringDeclarations[stringDeclaration.Value] = stringDeclaration.Key;
-            }
-            
+			lock (_lock) {
+				foreach (var stringDeclaration in StringDeclarations) {
+					fromProtobuf.StringDeclarations [stringDeclaration.Value] = stringDeclaration.Key;
+				}
+			}
+
             fromProtobuf.Convert(data);
 
             return warehouse;
