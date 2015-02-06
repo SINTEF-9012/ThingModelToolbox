@@ -1,8 +1,36 @@
 {
-	"port": 5000,
-	"database": "database-vbs.db",
+	"port": 5701,
+	"database": "database.db",
+	"secret": "uniaeauieansrt",
+	"channels": [
+		{
+			"id": "channela",
+			"keys": [
+				"32dd3d39210122dc979d45ebd93cafc56c6375a8",
+				"c9649ed14add4375acdfd35c1482392f4a1c6dfa",
+				"plain text"
+			],
+			"name": "Alphonse channel",
+			"channel": "/alphonse?readonly=true"
+		},
+		{
+			"id": "channeb",
+			"keys": [
+				"cc8f1787c96c81ed1470e79bc457b8a6e9259a67",
+				"plain text"
+			],
+			"name": "Roger channel",
+			"channel": "/roger"
+		},
+		{
+			"id": "default",
+			"keys": false,
+			"name": "Unprotected channel",
+			"channel": "/"
+		}
+	],
 	"thingmodel": {
 		"sender_id": "thingmodelrdd",
-		"endpoint": "wss://master-bridge.eu/thingmodel/vbs"
+		"endpoint": "ws://localhost:8083"
 	}
 }

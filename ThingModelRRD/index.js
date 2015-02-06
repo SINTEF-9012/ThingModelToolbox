@@ -4,12 +4,24 @@ var express = require('express'),
     d3 = require('d3'),
     jsdom = require('jsdom'),
     simplify = require('simplify-js'),
+    basicAuth = require('basic-auth-connect'),
     datejs = require('date.js'),
+	Nedb = require('nedb'),
 	sqlite3 = require('sqlite3').verbose();
 
 var config = require('./config.json');
 
 var db = new sqlite3.Database(config.database);
+var sourceDb = new Nedb({filename: 'source.db', autoload:true});
+var sourcesChannels = {};
+
+sourceDb.find({}, function (err, docs) {
+	if (!err) {
+		docs.forEach(function(doc){
+			sourcesChannels[doc.id] = doc.channel;
+		});
+	}
+});
 
 db.serialize(function() {
 	db.run('CREATE TABLE IF NOT EXISTS declarations (key INTEGER PRIMARY KEY, value STRING)');
@@ -48,19 +60,17 @@ var getStringKey = function(value) {
 	}
 };
 
-var warehouse = new ThingModel.Warehouse();
+var onUpdate = function(thing, channelKey) {
+	if (sourcesChannels.hasOwnProperty(thing.ID)) {
+		if (sourcesChannels[thing.ID] !== channelKey) {
+			sourcesChannels[thing.ID] = channelKey;
+			sourceDb.update({id: thing.ID}, {channel: channelKey});
+		}
+	} else {
+		sourcesChannels[thing.ID] = channelKey;
+		sourceDb.insert({id: thing.ID, channel: channelKey});
+	}
 
-declarationsDb.each(function(error, row) {
-	stringDeclarations[row.value] = row.key;
-	stringDeclarationsCpt = Math.max(row.key, stringDeclarationsCpt) + 1;
-}, function() {
-	declarationsDb.reset();
-	var thingmodelClient = new ThingModel.WebSockets.Client(config.thingmodel.sender_id, config.thingmodel.endpoint, warehouse); 
-});
-
-
-
-var onUpdate = function(thing) {
 	var date = +new Date();
 	thing.Properties.forEach(function(property){
 		var value = property._value,
@@ -73,16 +83,40 @@ var onUpdate = function(thing) {
 	});
 }
 
-warehouse.RegisterObserver({
-	New: function(thing) {
-		onUpdate(thing);
-	},
-	Updated: function(thing) {
-		onUpdate(thing);
-	},
-	Define: function(){},
-	Deleted: function(){}
+var keys = {};
+
+declarationsDb.each(function(error, row) {
+	stringDeclarations[row.value] = row.key;
+	stringDeclarationsCpt = Math.max(row.key, stringDeclarationsCpt) + 1;
+}, function() {
+	declarationsDb.reset();
+
+	config.channels.forEach(function(channel) {
+		console.log("Loading channel: "+channel.id);
+		if (channel.keys) {
+			var channelKeys = keys[channel.id] = {};
+			channel.keys.forEach(function(k) {
+				channelKeys[k] = true;
+			})
+		}
+
+		var warehouse = new ThingModel.Warehouse();
+		var client = new ThingModel.WebSockets.Client(
+			config.thingmodel.sender_id,
+			config.thingmodel.endpoint+channel.channel, warehouse); 
+		warehouse.RegisterObserver({
+			New: function(thing) {
+				onUpdate(thing, channel.id);
+			},
+			Updated: function(thing) {
+				onUpdate(thing, channel.id);
+			},
+			Define: function(){},
+			Deleted: function(){}
+		});
+	});
 });
+
 
 var parseDate = function(input) {
 	if (input > 0 || input <= 0) {
@@ -100,6 +134,8 @@ var parseDate = function(input) {
 var app = express();
 app.use(morgan('combined'));
 
+var auth = basicAuth("bridge", config.secret);
+
 app.use(function(req, res, next) {
 	res.header("Access-Control-Allow-Origin", "*");
 	res.header("Access-Control-Allow-Headers", "X-Requested-With");
@@ -108,7 +144,7 @@ app.use(function(req, res, next) {
 
 app.set('port', (process.env.PORT || config.port));
 
-app.get('/', function(req, res) {
+app.get('/', auth, function(req, res) {
 	dashboardDb.all(function(error, rows){
 		dashboardDb.reset();
 		jsdom.env({
@@ -137,7 +173,7 @@ app.get('/', function(req, res) {
 	});
 });
 
-app.get('/:thingId', function(req, res) {
+app.get('/:thingId', auth, function(req, res) {
 	var data = {}, lastTitle = null, lastDataList = null;
 	thingDb.each(0, req.params.thingId, function(error, row){
 		var title = row.propertykey;
@@ -217,8 +253,21 @@ app.get('/:thingId', function(req, res) {
 });
 
 app.get('/:thingId/:propertyKey', function(req, res) {
+
+	var thingId = req.params.thingId;
+	if (sourcesChannels.hasOwnProperty(thingId)) {
+		var channel = sourcesChannels[thingId];
+		if (keys.hasOwnProperty(channel)) {
+			var key = req.query.key;
+			if (!key || !keys[channel].hasOwnProperty(key)) {
+				res.status(403).send('Missing or wrong key');
+				return;
+			}		
+		}	
+	}
+
 	var result = [];
-	if (!stringDeclarations.hasOwnProperty(req.params.thingId) ||
+	if (!stringDeclarations.hasOwnProperty(thingId) ||
 		!stringDeclarations.hasOwnProperty(req.params.propertyKey)) {
 		res.status(404).send("Thing not found");
 		return;
@@ -233,7 +282,7 @@ app.get('/:thingId/:propertyKey', function(req, res) {
 	}, function(error) {
 		findDb.reset();
 		if (!req.query.hasOwnProperty("nosimplify")) {
-			result = simplify(result, 1, true);
+			result = simplify(result, 0.5, true);
 		}
 		for (var i =0,l=result.length;i<l;++i){
 			result[i] = {date:result[i].x, value:result[i].y};
