@@ -28,6 +28,7 @@ db.serialize(function() {
 	db.run('CREATE UNIQUE INDEX IF NOT EXISTS declarationsindex ON declarations(value)');
 	db.run('CREATE TABLE IF NOT EXISTS recorder (datetime INTEGER, thingid INTEGER, propertykey INTEGER, value INTEGER)');
 	db.run('CREATE INDEX IF NOT EXISTS datetimeindex ON recorder(datetime ASC)');
+	db.run('CREATE INDEX IF NOT EXISTS recorderindex ON recorder(thingid, propertykey)');
 });
 
 var insertTransactionDb = db.prepare('INSERT INTO recorder VALUES (?, ?, ?, ?)'),
