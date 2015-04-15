@@ -121,7 +121,7 @@ declarationsDb.each(function(error, row) {
 
 var parseDate = function(input) {
 	if (input > 0 || input <= 0) {
-		var timestamp = parseInt(input, 10);
+		var timestamp = parseInt(input, 10) || 0;
 	} else {
 		timestamp = Date.parse(input);
 		if (isNaN(timestamp)) {
